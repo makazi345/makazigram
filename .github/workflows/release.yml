@@ -9,8 +9,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -20,19 +21,72 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: '' # Отключает установку удаленного пакета 'tools'
+          packages: ''
 
-      - name: Create API_KEYS
+      - name: Setup Gradle Caching
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Increase Gradle Memory
         run: |
-          # Вставляем твои данные
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" >> gradle.properties
+          echo "org.gradle.parallel=true" >> gradle.properties
+
+      - name: Generate Keystore
+        run: |
+          mkdir -p config
+          keytool -genkey -v -keystore config/extera.jks -keyalg RSA -keysize 2048 -validity 10000 -alias mykey -storepass 123456 -keypass 123456 -dname "CN=Makazi, OU=Makazi, O=Makazi, L=Makazi, S=Makazi, C=US"
+
+      - name: Create API_KEYS & Dummy Data
+        run: |
+          # Твои ключи Telegram
           echo "APP_ID=38743864" > API_KEYS
           echo "APP_HASH=d5830ede00e788b2604639238e6855ed" >> API_KEYS
+          # Пароли от Keystore
+          echo "SIGNING_KEY_STORE_PASSWORD=123456" >> API_KEYS
+          echo "SIGNING_KEY_ALIAS=mykey" >> API_KEYS
+          echo "SIGNING_KEY_PASSWORD=123456" >> API_KEYS
+          # Заглушка для карт (чтобы сборка не упала)
+          echo "MAPS_V2_API=dummy_api_key" >> API_KEYS
+
+          # Создаем фейковый google-services.json (без него Firebase сломает сборку)
+          mkdir -p TMessagesProj
+          cat > TMessagesProj/google-services.json << 'EOF'
+          {
+            "project_info": {
+              "project_number": "123456789012",
+              "project_id": "makazigram-12345",
+              "storage_bucket": "makazigram-12345.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:123456789012:android:0123456789abcdef",
+                  "android_client_info": {
+                    "package_name": "com.makazi.trollgram"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyDummyKeyForBuildPurposesOnly"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": []
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
 
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build APK
-        run: ./gradlew assembleAfatRelease
+        run: ./gradlew assembleAfatRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
